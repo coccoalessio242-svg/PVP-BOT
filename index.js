@@ -256,11 +256,28 @@ async function handleVerifyButton(interaction) {
       return interaction.reply({ content: 'Ruolo di verifica non trovato. Contatta un amministratore.', ephemeral: true });
     }
 
+    const botMember = await interaction.guild.members.fetchMe();
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      console.error('Bot non ha il permesso ManageRoles');
+      return interaction.reply({ content: 'Il bot non ha il permesso per assegnare ruoli.', ephemeral: true });
+    }
+
+    if (botMember.roles.highest.position <= role.position) {
+      console.error(`Ruolo ${role.name} è più alto o uguale al ruolo del bot`);
+      return interaction.reply({ content: `Il ruolo ${role.name} è troppo alto nella gerarchia. Sposta il bot più in alto.`, ephemeral: true });
+    }
+
     await member.roles.add(verificationRoleId);
     return interaction.reply({ content: `Verifica completata! Ti è stato assegnato il ruolo ${role.name}.`, ephemeral: true });
   } catch (error) {
-    console.error('Errore durante l\'assegnazione del ruolo di verifica:', error);
-    return interaction.reply({ content: 'Errore durante l\'assegnazione del ruolo. Contatta lo staff.', ephemeral: true });
+    console.error('Errore durante l\'assegnazione del ruolo di verifica:', error.message || error);
+    console.error('Dettagli:', {
+      userId: member.id,
+      roleId: verificationRoleId,
+      guildId: interaction.guild.id,
+      botPermissions: interaction.guild.members.me?.permissions.toArray()
+    });
+    return interaction.reply({ content: `Errore durante l'assegnazione del ruolo: ${error.message}`, ephemeral: true });
   }
 }
 
