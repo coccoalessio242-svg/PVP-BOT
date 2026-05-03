@@ -250,8 +250,18 @@ async function handleVerifyButton(interaction) {
     return interaction.reply({ content: 'Sei già verificato.', ephemeral: true });
   }
 
-  await member.roles.add(verificationRoleId).catch(() => null);
-  return interaction.reply({ content: `Verifica completata! Ti è stato assegnato il ruolo.`, ephemeral: true });
+  try {
+    const role = await interaction.guild.roles.fetch(verificationRoleId).catch(() => null);
+    if (!role) {
+      return interaction.reply({ content: 'Ruolo di verifica non trovato. Contatta un amministratore.', ephemeral: true });
+    }
+
+    await member.roles.add(verificationRoleId);
+    return interaction.reply({ content: `Verifica completata! Ti è stato assegnato il ruolo ${role.name}.`, ephemeral: true });
+  } catch (error) {
+    console.error('Errore durante l\'assegnazione del ruolo di verifica:', error);
+    return interaction.reply({ content: 'Errore durante l\'assegnazione del ruolo. Contatta lo staff.', ephemeral: true });
+  }
 }
 
 function createTicketEmbed(user, category) {
