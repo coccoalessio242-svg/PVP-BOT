@@ -62,8 +62,10 @@ client.once('ready', async () => {
     try {
       const channel = await client.channels.fetch(panelChannelId);
       if (channel && channel.isTextBased()) {
-        await channel.send({ embeds: [createPanelEmbed()], components: createPanelButtons() });
-        console.log(`Pannello ticket inviato su <#${panelChannelId}>.`);
+        if (!(await panelAlreadyExists(channel, '🎟️ CIAO UTENTE DI HYPE PVP', 'ticket:partner'))) {
+          await channel.send({ embeds: [createPanelEmbed()], components: createPanelButtons() });
+          console.log(`Pannello ticket inviato su <#${panelChannelId}>.`);
+        }
       }
     } catch (error) {
       console.warn('Impossibile inviare automaticamente il pannello ticket:', error.message);
@@ -216,7 +218,21 @@ async function sendVerifyPanel() {
   const channel = await client.channels.fetch(verifyChannelId).catch(() => null);
   if (!channel || !channel.isTextBased()) return;
 
+  if (await panelAlreadyExists(channel, 'Verifica Utente', 'verify:confirm')) return;
+
   await channel.send({ embeds: [createVerifyEmbed()], components: [createVerifyButton()] }).catch(() => null);
+}
+
+async function panelAlreadyExists(channel, embedTitle, buttonCustomId) {
+  const messages = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+  if (!messages) return false;
+
+  return messages.some((message) => {
+    if (message.embeds.some((embed) => embed.title === embedTitle)) return true;
+    return message.components.some((row) =>
+      row.components.some((component) => component.customId === buttonCustomId)
+    );
+  });
 }
 
 async function handleVerifyButton(interaction) {
@@ -410,12 +426,14 @@ async function handleCloseButton(interaction) {
 }
 
 async function handleCloseModalSubmit(interaction) {
+  await interaction.deferReply({ ephemeral: true });
+
   const channel = interaction.channel;
   const ownerId = channel.topic.split('TicketOwnerID:')[1].split(' |')[0];
   const reason = interaction.fields.getTextInputValue('closeReason');
 
   await closeTicket(channel, ownerId, interaction.user, reason);
-  await interaction.reply({ content: 'Ticket chiuso con successo.', ephemeral: true });
+  await interaction.editReply({ content: 'Ticket chiuso con successo.' });
 }
 
 async function handleTicketClaim(interaction) {
