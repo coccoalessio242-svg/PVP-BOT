@@ -1,0 +1,15 @@
+{
+  "name": "hype-pvp-ticket-bot",
+  "version": "1.0.0",
+  "description": "Discord ticket bot per Hype PVP con categorie dedicate.",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
