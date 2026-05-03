@@ -157,8 +157,9 @@ function createPanelEmbed() {
   return new EmbedBuilder()
     .setTitle('🎟️ CIAO UTENTE DI HYPE PVP')
     .setDescription(
-      'PER QUALSIASI PROBLEMA APRI IL TICKET CHE TI SERVE.\n\n' +
-      'Scegli la categoria giusta e attendi lo staff. Solo tu e lo staff potranno vedere il ticket.'
+      '✨ PER QUALSIASI PROBLEMA APRI IL TICKET CHE TI SERVE ✨\n\n' +
+      '🏷️ Scegli la categoria giusta e attendi lo staff. Solo tu e lo staff potranno vedere il ticket.\n' +
+      '📌 Ricorda: puoi avere solo un ticket aperto alla volta.'
     )
     .setColor('#2f3136')
     .setFooter({ text: 'HYPE PVP | Ticket System' });
@@ -174,6 +175,7 @@ function createPanelButtons() {
       new ButtonBuilder()
         .setCustomId(`ticket:${category.id}`)
         .setLabel(category.label)
+        .setEmoji(category.emoji)
         .setStyle(ButtonStyle.Primary)
     );
   });
@@ -183,6 +185,7 @@ function createPanelButtons() {
       new ButtonBuilder()
         .setCustomId(`ticket:${category.id}`)
         .setLabel(category.label)
+        .setEmoji(category.emoji)
         .setStyle(ButtonStyle.Secondary)
     );
   });
@@ -327,7 +330,10 @@ async function handleTicketOpen(interaction, categoryId) {
   }
 
   const existingChannel = interaction.guild.channels.cache.find((channel) => {
-    return channel.topic?.includes(`TicketOwnerID:${interaction.user.id}`);
+    return (
+      channel.topic?.includes(`TicketOwnerID:${interaction.user.id}`) &&
+      !channel.name.endsWith('-chiuso')
+    );
   });
 
   if (existingChannel) {
@@ -447,16 +453,24 @@ async function closeTicket(channel, ownerId, closer, reason) {
     name: `${channel.name}-transcript.txt`,
   });
 
-  await channel.permissionOverwrites.edit(ownerId, { ViewChannel: false, SendMessages: false });
-  await channel.setName(`${channel.name}-chiuso`);
-  await channel.setTopic(`${channel.topic} | Chiuso da: ${closer.tag} | Motivo: ${reason}`);
-  await channel.send({ content: `Ticket chiuso da ${closer}. Motivazione: ${reason}` });
+  const category = channel.parent;
+  const closeMessage = `Ticket chiuso da ${closer}. Motivazione: ${reason}`;
+  await channel.send({ content: closeMessage }).catch(() => null);
 
   if (owner) {
     await owner.send({
-      content: `Il tuo ticket <#${channel.id}> è stato chiuso. Ecco la trascrizione completa:`,
+      content: `Il tuo ticket ${channel.name} è stato chiuso. Ecco la trascrizione completa:`,
       files: [transcriptFile],
     }).catch(() => null);
+  }
+
+  await channel.delete().catch(() => null);
+
+  if (category) {
+    const remainingTextChannels = category.children.filter((child) => child.type === ChannelType.GuildText && child.id !== channel.id);
+    if (remainingTextChannels.size === 0) {
+      await category.delete().catch(() => null);
+    }
   }
 }
 
