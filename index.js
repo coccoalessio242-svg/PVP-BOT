@@ -296,7 +296,7 @@ async function getOrCreateTypeCategory(guild, category) {
     type: ChannelType.GuildCategory,
     permissionOverwrites: [
       {
-        id: guild.roles.everyone,
+        id: guild.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
       {
@@ -373,7 +373,7 @@ async function handleTicketOpen(interaction, categoryId) {
     topic: `TicketOwnerID:${interaction.user.id} | Categoria:${category.label}`,
     permissionOverwrites: [
       {
-        id: interaction.guild.roles.everyone,
+        id: interaction.guild.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
       {
