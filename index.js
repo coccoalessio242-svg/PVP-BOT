@@ -12,32 +12,41 @@ const {
   AttachmentBuilder,
   ChannelType,
   PermissionFlagsBits,
+  SlashCommandBuilder,
 } = require('discord.js');
 const { REST } = require('@discordjs/rest');
 
+// ===== VARIABILI OBBLIGATORIE (Bot) =====
 const token = process.env.TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 const staffRoleId = process.env.STAFF_ROLE_ID;
-const ticketCategoryId = process.env.TICKET_CATEGORY_ID;
-const panelChannelId = process.env.PANEL_CHANNEL_ID;
-const welcomeChannelId = process.env.WELCOME_CHANNEL_ID;
-const leaveChannelId = process.env.LEAVE_CHANNEL_ID;
-const verifyChannelId = process.env.VERIFY_CHANNEL_ID;
-const verificationRoleId = process.env.VERIFICATION_ROLE_ID;
+const adminRoleId = process.env.ADMIN_ROLE_ID;
 
+// ===== VARIABILI CANALI =====
+const panelChannelId = process.env.PANEL_CHANNEL_ID;           // Canale dove inviare il pannello ticket
+const welcomeChannelId = process.env.WELCOME_CHANNEL_ID;       // Canale benvenuto nuovi membri
+const leaveChannelId = process.env.LEAVE_CHANNEL_ID;           // Canale addio membri
+const verifyChannelId = process.env.VERIFY_CHANNEL_ID;         // Canale verifica
+
+// ===== VARIABILI RUOLI =====
+const verificationRoleId = process.env.VERIFICATION_ROLE_ID;   // Ruolo assegnato dopo verifica
+
+// ===== VALIDAZIONI CONFIGURAZIONE =====
 if (!token || !clientId || !guildId || !staffRoleId) {
-  console.error('Errore: assicurati che TOKEN, CLIENT_ID, GUILD_ID e STAFF_ROLE_ID siano impostati.');
+  console.error('❌ Errore critico: TOKEN, CLIENT_ID, GUILD_ID e STAFF_ROLE_ID sono OBBLIGATORI.');
   process.exit(1);
 }
 
-if (!ticketCategoryId) {
-  console.warn('ATTENZIONE: TICKET_CATEGORY_ID non impostato. Le categorie ticket verranno create alla radice del server.');
+if (!panelChannelId) {
+  console.warn('⚠️  PANEL_CHANNEL_ID non impostato. Pannello ticket non verrà inviato automaticamente.');
 }
 
 if (verifyChannelId && !verificationRoleId) {
-  console.warn('ATTENZIONE: VERIFY_CHANNEL_ID impostato ma VERIFICATION_ROLE_ID manca. La verifica non assegnerà alcun ruolo.');
+  console.warn('⚠️  VERIFY_CHANNEL_ID impostato ma VERIFICATION_ROLE_ID manca. La verifica non funzionerà.');
 }
+
+console.log('✅ Configurazione caricata correttamente.');
 
 const ticketCategories = [
   { id: 'partner', label: 'PARTNER', emoji: '🤝' },
@@ -104,6 +113,10 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.reply({ content: 'Pannello ticket inviato.', ephemeral: true });
         await interaction.channel.send({ embeds: [createPanelEmbed()], components: createPanelButtons() });
       }
+      
+      if (interaction.commandName === 'testo') {
+        return await handleTestoCommand(interaction);
+      }
       return;
     }
 
@@ -148,6 +161,20 @@ async function registerCommands() {
       name: 'ticketpanel',
       description: 'Invia il pannello ticket in questo canale',
     },
+    new SlashCommandBuilder()
+      .setName('testo')
+      .setDescription('Invia un testo lungo in un canale specifico (Solo Admin)')
+      .addChannelOption(option =>
+        option.setName('canale')
+          .setDescription('Il canale dove inviare il testo')
+          .setRequired(true)
+      )
+      .addStringOption(option =>
+        option.setName('testo')
+          .setDescription('Il testo da inviare')
+          .setRequired(true)
+      )
+      .toJSON(),
   ];
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -281,6 +308,49 @@ async function handleVerifyButton(interaction) {
   }
 }
 
+async function handleTestoCommand(interaction) {
+  // Verifica se l'utente è admin
+  const isAdmin = interaction.member.roles.cache.has(adminRoleId);
+  if (!isAdmin) {
+    return interaction.reply({ 
+      content: '❌ Solo gli admin possono usare questo comando.', 
+      ephemeral: true 
+    });
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const channel = interaction.options.getChannel('canale');
+  const text = interaction.options.getString('testo');
+
+  if (!channel || !channel.isTextBased()) {
+    return interaction.editReply({ 
+      content: '❌ Il canale specificato non è valido o non è un canale di testo.' 
+    });
+  }
+
+  try {
+    // Crea un embed rosso decorato
+    const embed = new EmbedBuilder()
+      .setTitle('📋 REGOLAMENTO')
+      .setDescription(text)
+      .setColor('#FF0000') // Rosso
+      .setFooter({ text: `Inviato da: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+
+    return interaction.editReply({ 
+      content: `✅ Testo inviato con successo in <#${channel.id}>` 
+    });
+  } catch (error) {
+    console.error('Errore durante l\'invio del testo:', error);
+    return interaction.editReply({ 
+      content: `❌ Errore durante l'invio del testo: ${error.message}` 
+    });
+  }
+}
+
 function createTicketEmbed(user, category) {
   return new EmbedBuilder()
     .setTitle(`Ticket aperto: ${category.label}`)
@@ -315,9 +385,11 @@ async function getOrCreateTypeCategory(guild, category) {
   );
 
   if (existingCategory) {
+    console.log(`[TICKET CATEGORY] Using existing category: ${categoryName} (${existingCategory.id})`);
     return existingCategory.id;
   }
 
+  console.log(`[TICKET CATEGORY] Creating new category: ${categoryName}`);
   const createdCategory = await guild.channels.create({
     name: categoryName,
     type: ChannelType.GuildCategory,
@@ -372,6 +444,8 @@ async function handleTicketOpen(interaction, categoryId) {
     return interaction.editReply({ content: 'Categoria ticket non valida.' });
   }
 
+  console.log(`[TICKET OPEN] Utente: ${interaction.user.tag} (${interaction.user.id}) | Categoria: ${category.label}`);
+
   const existingChannel = interaction.guild.channels.cache.find((channel) => {
     return (
       channel.topic?.includes(`TicketOwnerID:${interaction.user.id}`) &&
@@ -380,6 +454,7 @@ async function handleTicketOpen(interaction, categoryId) {
   });
 
   if (existingChannel) {
+    console.log(`[TICKET DUPLICATE] Utente ${interaction.user.tag} (${interaction.user.id}) ha già un ticket aperto: ${existingChannel.name} (${existingChannel.id})`);
     return interaction.editReply({
       content: `Hai già un ticket aperto: <#${existingChannel.id}>`,
     });
@@ -433,6 +508,8 @@ async function handleTicketOpen(interaction, categoryId) {
 
   await channel.send({ embeds: [createTicketEmbed(interaction.user, category)], components: [createTicketActions()] });
 
+  console.log(`[TICKET CREATED] Channel: ${channel.name} (${channel.id}) | Owner: ${interaction.user.tag} (${interaction.user.id}) | Category: ${category.label}`);
+
   return interaction.editReply({
     content: `Il tuo ticket è stato creato: <#${channel.id}>`,
   });
@@ -459,6 +536,8 @@ async function handleCloseModalSubmit(interaction) {
   const ownerId = channel.topic.split('TicketOwnerID:')[1].split(' |')[0];
   const reason = interaction.fields.getTextInputValue('closeReason');
 
+  console.log(`[TICKET CLOSE REQUEST] Channel: ${channel.name} (${channel.id}) | Owner: ${ownerId} | Staff: ${interaction.user.tag} (${interaction.user.id}) | Reason: ${reason}`);
+
   await closeTicket(channel, ownerId, interaction.user, reason);
   await interaction.editReply({ content: 'Ticket chiuso con successo.' });
 }
@@ -476,11 +555,16 @@ async function handleTicketClaim(interaction) {
 
   const ownerId = channel.topic.split('TicketOwnerID:')[1].split(' |')[0];
   const owner = await interaction.guild.members.fetch(ownerId).catch(() => null);
+  
+  console.log(`[TICKET CLAIMED] Channel: ${channel.name} (${channel.id}) | Owner: ${ownerId} | Staff: ${interaction.user.tag} (${interaction.user.id})`);
+  
   await channel.send({ content: `🔧 <@${ownerId}> il ticket è stato preso in gestione da ${interaction.user}.` });
   return interaction.reply({ content: 'Hai preso in gestione questo ticket.', ephemeral: true });
 }
 
 async function closeTicket(channel, ownerId, closer, reason) {
+  console.log(`[TICKET CLOSED] Channel: ${channel.name} (${channel.id}) | Owner: ${ownerId} | Closed by: ${closer.tag} (${closer.id})`);
+  
   const owner = await channel.guild.members.fetch(ownerId).catch(() => null);
   const messages = await channel.messages.fetch({ limit: 100 });
   const transcript = messages
